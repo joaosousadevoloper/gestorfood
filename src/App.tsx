@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { configured, supabase } from './lib/supabase'
+import Admin from "./pages/admin";
 
 type Page = 'overview' | 'orders' | 'menu' | 'cash' | 'customers'
 type Store = { id: string; name: string; slug: string }
@@ -56,6 +57,9 @@ export default function App() {
   if (!configured) return <SetupNotice />
   if (loading) return <div className="center">Carregando Giro Pizza…</div>
   if (!session) return <Auth onMessage={tell} />
+  if (window.location.pathname === "/admin") {
+  return <Admin />;
+}
   if (!store) return <CreateStore onCreated={loadStore} onMessage={tell} />
 
   return <div className="app-shell"><aside><div className="brand"><b>G</b> giro<span>pizza</span></div><p className="store-name">{store.name}</p><nav>{nav.map(([key,icon,label]) => <button key={key} onClick={() => setPage(key)} className={page===key?'active':''}><i>{icon}</i>{label}</button>)}</nav><div className="online"><span /> Loja aberta<br/><small>{session.user.email}</small></div><button className="logout" onClick={() => supabase?.auth.signOut()}>Sair</button></aside><main><header><div><small>PAINEL OPERACIONAL</small><h1>{nav.find(n=>n[0]===page)?.[2]}</h1></div><button className="primary" onClick={() => setModal(page==='cash'?'cash':page==='menu'?'menu':'order')}>+ {page==='cash'?'Movimentação':page==='menu'?'Novo item':'Novo pedido'}</button></header>{page==='overview'&&<Overview revenue={todayRevenue} orders={orders} cash={cashBalance} onPage={setPage}/>} {page==='orders'&&<Orders orders={orders} onStatus={async (id,status)=>{await supabase!.from('orders').update({status}).eq('id',id); await loadData()}}/>} {page==='menu'&&<Menu items={menu}/>} {page==='cash'&&<Cash rows={cash} balance={cashBalance}/>} {page==='customers'&&<Customers store={store} onMessage={tell}/>}</main>{modal&&<Modal type={modal} store={store} menu={menu} onClose={()=>setModal(null)} onSaved={async()=>{setModal(null);await loadData()}} onMessage={tell}/>}<div className={'toast '+(message?'show':'')}>{message}</div></div>
@@ -75,3 +79,19 @@ function Menu({items}:{items:MenuItem[]}){return <><div className="public-link">
 function Cash({rows,balance}:{rows:CashMovement[];balance:number}){return <><div className="metrics"><Metric label="Saldo de movimentações" value={BRL.format(balance)} accent="green"/><Metric label="Lançamentos" value={String(rows.length)} accent="blue"/></div><section className="card"><div className="section-title"><div><h2>Movimentações</h2><p>Entradas, retiradas, despesas e suprimentos.</p></div></div>{rows.map(r=><div className="cash-line" key={r.id}><div><strong>{r.description||r.type}</strong><small>{new Date(r.created_at).toLocaleString('pt-BR')}</small></div><span className={Number(r.amount)>=0?'positive':'negative'}>{Number(r.amount)>=0?'+ ':''}{BRL.format(Number(r.amount))}</span></div>)}{!rows.length&&<Empty text="Nenhuma movimentação neste caixa."/>}</section></>}
 function Customers({store,onMessage}:{store:Store;onMessage:(s:string)=>void}){const [name,setName]=useState('');const [phone,setPhone]=useState('');const [address,setAddress]=useState('');async function submit(e:FormEvent){e.preventDefault();const {error}=await supabase!.from('customers').insert({establishment_id:store.id,name,phone,address});if(error)onMessage(error.message);else{onMessage('Cliente cadastrado com sucesso.');setName('');setPhone('');setAddress('')}}return <section className="card customer-form"><div className="section-title"><div><h2>Cadastro de clientes</h2><p>Guarde endereços e histórico de compra.</p></div></div><form onSubmit={submit}><label>Nome<input value={name} onChange={e=>setName(e.target.value)} required /></label><label>WhatsApp<input value={phone} onChange={e=>setPhone(e.target.value)} /></label><label>Endereço<input value={address} onChange={e=>setAddress(e.target.value)} /></label><button className="primary">Cadastrar cliente</button></form></section>}
 function Modal({type,store,menu,onClose,onSaved,onMessage}:{type:'order'|'cash'|'menu';store:Store;menu:MenuItem[];onClose:()=>void;onSaved:()=>Promise<void>;onMessage:(s:string)=>void}){const [name,setName]=useState('');const [amount,setAmount]=useState('');const [kind,setKind]=useState('counter');const [description,setDescription]=useState('');async function submit(e:FormEvent){e.preventDefault();if(!supabase)return;let error;if(type==='menu')({error}=await supabase.from('menu_items').insert({establishment_id:store.id,name,description,price:Number(amount),active:true}));else if(type==='cash'){const sign=kind==='withdrawal'||kind==='expense'?-1:1;({error}=await supabase.from('cash_movements').insert({establishment_id:store.id,type:kind,amount:sign*Math.abs(Number(amount)),description,created_by:(await supabase.auth.getUser()).data.user?.id}));}else({error}=await supabase.from('orders').insert({establishment_id:store.id,type:kind,total:Number(amount),notes:description,status:'new'}));if(error)onMessage(error.message);else{onMessage(type==='order'?'Pedido criado.':type==='cash'?'Movimentação registrada.':'Item salvo no cardápio.');await onSaved()}}const title=type==='order'?'Novo pedido':type==='cash'?'Movimentar caixa':'Novo item do cardápio';return <div className="modal-back"><form className="modal" onSubmit={submit}><button className="close" type="button" onClick={onClose}>×</button><h2>{title}</h2>{type==='order'&&<label>Canal<select value={kind} onChange={e=>setKind(e.target.value)}><option value="counter">Balcão</option><option value="pickup">Retirada</option><option value="delivery">Entrega</option></select></label>}{type==='cash'&&<label>Tipo<select value={kind} onChange={e=>setKind(e.target.value)}><option value="supply">Suprimento</option><option value="withdrawal">Retirada / sangria</option><option value="expense">Despesa</option></select></label>}<label>{type==='menu'?'Nome do produto':'Descrição'}<input value={type==='menu'||type==='order'?name:description} onChange={e=>type==='menu'||type==='order'?setName(e.target.value):setDescription(e.target.value)} required /></label>{type!=='cash'&&<label>Observação / descrição<input value={description} onChange={e=>setDescription(e.target.value)} /></label>}<label>{type==='menu'||type==='order'?'Valor total':'Valor'}<input type="number" min="0" step="0.01" value={amount} onChange={e=>setAmount(e.target.value)} required /></label><button className="primary">Salvar</button></form></div>}
+
+
+const [isPlatformAdmin, setIsPlatformAdmin] = useState(false)
+
+async function checkPlatformAdmin() {
+  if (!supabase) return false
+
+  const { data, error } = await supabase.rpc('is_platform_admin')
+
+  if (error) {
+    console.error(error)
+    return false
+  }
+
+  return data === true
+}
