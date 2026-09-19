@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { supabase } from "../lib/supabase";
+import { supabase } from "../../lib/supabase";
+import Dashboard from "./dashboard";
 
 type Establishment = {
   id: string;
@@ -24,6 +25,7 @@ export default function Admin() {
     return;
   }
 
+                  
   const { data, error } = await supabase
     .from("establishments")
     .select("id, name, slug, phone, active")
@@ -49,6 +51,7 @@ export default function Admin() {
       <p>Gerenciamento do GestorFood</p>
 
       <h2>Lojas cadastradas</h2>
+      <Dashboard/>
 
       {stores.map((store) => (
         <div key={store.id}>
