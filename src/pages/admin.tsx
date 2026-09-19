@@ -18,20 +18,26 @@ export default function Admin() {
   }, []);
 
   async function loadStores() {
-    const { data, error } = await supabase
-      .from("establishments")
-      .select("id, name, slug, phone, active")
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error(error);
-      return;
-    }
-
-    setStores(data || []);
+  if (!supabase) {
+    console.error("Supabase não está configurado.");
     setLoading(false);
+    return;
   }
 
+  const { data, error } = await supabase
+    .from("establishments")
+    .select("id, name, slug, phone, active")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error(error);
+    setLoading(false);
+    return;
+  }
+
+  setStores(data || []);
+  setLoading(false);
+}
   if (loading) {
     return <div>Carregando...</div>;
   }
