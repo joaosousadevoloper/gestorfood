@@ -65,6 +65,21 @@ export default function App() {
   return <div className="app-shell"><aside><div className="brand"><b>G</b> giro<span>pizza</span></div><p className="store-name">{store.name}</p><nav>{nav.map(([key,icon,label]) => <button key={key} onClick={() => setPage(key)} className={page===key?'active':''}><i>{icon}</i>{label}</button>)}</nav><div className="online"><span /> Loja aberta<br/><small>{session.user.email}</small></div><button className="logout" onClick={() => supabase?.auth.signOut()}>Sair</button></aside><main><header><div><small>PAINEL OPERACIONAL</small><h1>{nav.find(n=>n[0]===page)?.[2]}</h1></div><button className="primary" onClick={() => setModal(page==='cash'?'cash':page==='menu'?'menu':'order')}>+ {page==='cash'?'Movimentação':page==='menu'?'Novo item':'Novo pedido'}</button></header>{page==='overview'&&<Overview revenue={todayRevenue} orders={orders} cash={cashBalance} onPage={setPage}/>} {page==='orders'&&<Orders orders={orders} onStatus={async (id,status)=>{await supabase!.from('orders').update({status}).eq('id',id); await loadData()}}/>} {page==='menu'&&<Menu items={menu}/>} {page==='cash'&&<Cash rows={cash} balance={cashBalance}/>} {page==='customers'&&<Customers store={store} onMessage={tell}/>}</main>{modal&&<Modal type={modal} store={store} menu={menu} onClose={()=>setModal(null)} onSaved={async()=>{setModal(null);await loadData()}} onMessage={tell}/>}<div className={'toast '+(message?'show':'')}>{message}</div></div>
 }
 
+const [isPlatformAdmin, setIsPlatformAdmin] = useState(false)
+
+async function checkPlatformAdmin() {
+  if (!supabase) return false
+
+  const { data, error } = await supabase.rpc('is_platform_admin')
+
+  if (error) {
+    console.error(error)
+    return false
+  }
+
+  return data === true
+}
+
 function SetupNotice(){return <div className="setup"><h1>Giro Pizza</h1><p>Falta conectar o projeto ao Supabase.</p><ol><li>Copie <code>.env.example</code> para <code>.env.local</code>.</li><li>Preencha a URL e a chave publicável do projeto Supabase.</li><li>Execute <code>supabase/schema.sql</code> no SQL Editor.</li></ol></div>}
 function Auth({onMessage}:{onMessage:(s:string)=>void}) { const [mode,setMode]=useState<'login'|'signup'>('login'); const [email,setEmail]=useState(''); const [password,setPassword]=useState(''); const [name,setName]=useState(''); async function submit(e:FormEvent){e.preventDefault(); if(!supabase)return; const r=mode==='login'?await supabase.auth.signInWithPassword({email,password}):await supabase.auth.signUp({email,password,options:{data:{full_name:name}}}); if(r.error) onMessage(r.error.message); else onMessage(mode==='login'?'Login realizado.':'Conta criada. Confirme seu e-mail se o projeto exigir confirmação.')}; return <div className="auth"><form onSubmit={submit}><div className="brand"><b>G</b> giro<span>pizza</span></div><h1>{mode==='login'?'Entre na operação':'Crie sua conta'}</h1><p>{mode==='login'?'Acesse o painel da sua loja.':'Comece a configurar a sua loja.'}</p>{mode==='signup'&&<label>Seu nome<input value={name} onChange={e=>setName(e.target.value)} required /></label>}<label>E-mail<input type="email" value={email} onChange={e=>setEmail(e.target.value)} required /></label><label>Senha<input type="password" minLength={6} value={password} onChange={e=>setPassword(e.target.value)} required /></label><button className="primary">{mode==='login'?'Entrar':'Criar conta'}</button><button type="button" className="text-button" onClick={()=>setMode(mode==='login'?'signup':'login')}>{mode==='login'?'Ainda não tenho conta':'Já tenho uma conta'}</button></form></div>}
 function CreateStore({onCreated,onMessage}:{onCreated:()=>Promise<void>;onMessage:(s:string)=>void}){const [name,setName]=useState('');const [slug,setSlug]=useState('');async function submit(e:FormEvent){e.preventDefault();const {error}=await supabase!.rpc('create_establishment',{store_name:name,store_slug:slug,store_phone:null});if(error)onMessage(error.message);else await onCreated()}return <div className="auth"><form onSubmit={submit}><div className="brand"><b>G</b> giro<span>pizza</span></div><h1>Crie sua primeira loja</h1><p>Você será o proprietário e poderá adicionar a equipe depois.</p><label>Nome da loja<input value={name} onChange={e=>setName(e.target.value)} placeholder="Pizzaria do João" required /></label><label>Endereço do cardápio<input value={slug} onChange={e=>setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g,'-'))} placeholder="pizzaria-do-joao" required /></label><button className="primary">Criar loja</button></form></div>}
@@ -81,17 +96,3 @@ function Customers({store,onMessage}:{store:Store;onMessage:(s:string)=>void}){c
 function Modal({type,store,menu,onClose,onSaved,onMessage}:{type:'order'|'cash'|'menu';store:Store;menu:MenuItem[];onClose:()=>void;onSaved:()=>Promise<void>;onMessage:(s:string)=>void}){const [name,setName]=useState('');const [amount,setAmount]=useState('');const [kind,setKind]=useState('counter');const [description,setDescription]=useState('');async function submit(e:FormEvent){e.preventDefault();if(!supabase)return;let error;if(type==='menu')({error}=await supabase.from('menu_items').insert({establishment_id:store.id,name,description,price:Number(amount),active:true}));else if(type==='cash'){const sign=kind==='withdrawal'||kind==='expense'?-1:1;({error}=await supabase.from('cash_movements').insert({establishment_id:store.id,type:kind,amount:sign*Math.abs(Number(amount)),description,created_by:(await supabase.auth.getUser()).data.user?.id}));}else({error}=await supabase.from('orders').insert({establishment_id:store.id,type:kind,total:Number(amount),notes:description,status:'new'}));if(error)onMessage(error.message);else{onMessage(type==='order'?'Pedido criado.':type==='cash'?'Movimentação registrada.':'Item salvo no cardápio.');await onSaved()}}const title=type==='order'?'Novo pedido':type==='cash'?'Movimentar caixa':'Novo item do cardápio';return <div className="modal-back"><form className="modal" onSubmit={submit}><button className="close" type="button" onClick={onClose}>×</button><h2>{title}</h2>{type==='order'&&<label>Canal<select value={kind} onChange={e=>setKind(e.target.value)}><option value="counter">Balcão</option><option value="pickup">Retirada</option><option value="delivery">Entrega</option></select></label>}{type==='cash'&&<label>Tipo<select value={kind} onChange={e=>setKind(e.target.value)}><option value="supply">Suprimento</option><option value="withdrawal">Retirada / sangria</option><option value="expense">Despesa</option></select></label>}<label>{type==='menu'?'Nome do produto':'Descrição'}<input value={type==='menu'||type==='order'?name:description} onChange={e=>type==='menu'||type==='order'?setName(e.target.value):setDescription(e.target.value)} required /></label>{type!=='cash'&&<label>Observação / descrição<input value={description} onChange={e=>setDescription(e.target.value)} /></label>}<label>{type==='menu'||type==='order'?'Valor total':'Valor'}<input type="number" min="0" step="0.01" value={amount} onChange={e=>setAmount(e.target.value)} required /></label><button className="primary">Salvar</button></form></div>}
 
 
-const [isPlatformAdmin, setIsPlatformAdmin] = useState(false)
-
-async function checkPlatformAdmin() {
-  if (!supabase) return false
-
-  const { data, error } = await supabase.rpc('is_platform_admin')
-
-  if (error) {
-    console.error(error)
-    return false
-  }
-
-  return data === true
-}
