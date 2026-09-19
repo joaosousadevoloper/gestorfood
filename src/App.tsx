@@ -65,20 +65,7 @@ export default function App() {
   return <div className="app-shell"><aside><div className="brand"><b>G</b> giro<span>pizza</span></div><p className="store-name">{store.name}</p><nav>{nav.map(([key,icon,label]) => <button key={key} onClick={() => setPage(key)} className={page===key?'active':''}><i>{icon}</i>{label}</button>)}</nav><div className="online"><span /> Loja aberta<br/><small>{session.user.email}</small></div><button className="logout" onClick={() => supabase?.auth.signOut()}>Sair</button></aside><main><header><div><small>PAINEL OPERACIONAL</small><h1>{nav.find(n=>n[0]===page)?.[2]}</h1></div><button className="primary" onClick={() => setModal(page==='cash'?'cash':page==='menu'?'menu':'order')}>+ {page==='cash'?'Movimentação':page==='menu'?'Novo item':'Novo pedido'}</button></header>{page==='overview'&&<Overview revenue={todayRevenue} orders={orders} cash={cashBalance} onPage={setPage}/>} {page==='orders'&&<Orders orders={orders} onStatus={async (id,status)=>{await supabase!.from('orders').update({status}).eq('id',id); await loadData()}}/>} {page==='menu'&&<Menu items={menu}/>} {page==='cash'&&<Cash rows={cash} balance={cashBalance}/>} {page==='customers'&&<Customers store={store} onMessage={tell}/>}</main>{modal&&<Modal type={modal} store={store} menu={menu} onClose={()=>setModal(null)} onSaved={async()=>{setModal(null);await loadData()}} onMessage={tell}/>}<div className={'toast '+(message?'show':'')}>{message}</div></div>
 }
 
-const [isPlatformAdmin, setIsPlatformAdmin] = useState(false)
 
-async function checkPlatformAdmin() {
-  if (!supabase) return false
-
-  const { data, error } = await supabase.rpc('is_platform_admin')
-
-  if (error) {
-    console.error(error)
-    return false
-  }
-
-  return data === true
-}
 
 function SetupNotice(){return <div className="setup"><h1>Giro Pizza</h1><p>Falta conectar o projeto ao Supabase.</p><ol><li>Copie <code>.env.example</code> para <code>.env.local</code>.</li><li>Preencha a URL e a chave publicável do projeto Supabase.</li><li>Execute <code>supabase/schema.sql</code> no SQL Editor.</li></ol></div>}
 function Auth({onMessage}:{onMessage:(s:string)=>void}) { const [mode,setMode]=useState<'login'|'signup'>('login'); const [email,setEmail]=useState(''); const [password,setPassword]=useState(''); const [name,setName]=useState(''); async function submit(e:FormEvent){e.preventDefault(); if(!supabase)return; const r=mode==='login'?await supabase.auth.signInWithPassword({email,password}):await supabase.auth.signUp({email,password,options:{data:{full_name:name}}}); if(r.error) onMessage(r.error.message); else onMessage(mode==='login'?'Login realizado.':'Conta criada. Confirme seu e-mail se o projeto exigir confirmação.')}; return <div className="auth"><form onSubmit={submit}><div className="brand"><b>G</b> giro<span>pizza</span></div><h1>{mode==='login'?'Entre na operação':'Crie sua conta'}</h1><p>{mode==='login'?'Acesse o painel da sua loja.':'Comece a configurar a sua loja.'}</p>{mode==='signup'&&<label>Seu nome<input value={name} onChange={e=>setName(e.target.value)} required /></label>}<label>E-mail<input type="email" value={email} onChange={e=>setEmail(e.target.value)} required /></label><label>Senha<input type="password" minLength={6} value={password} onChange={e=>setPassword(e.target.value)} required /></label><button className="primary">{mode==='login'?'Entrar':'Criar conta'}</button><button type="button" className="text-button" onClick={()=>setMode(mode==='login'?'signup':'login')}>{mode==='login'?'Ainda não tenho conta':'Já tenho uma conta'}</button></form></div>}
